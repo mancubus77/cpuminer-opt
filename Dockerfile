@@ -19,7 +19,9 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY . /app/
-RUN cd /app/ && ./build.sh
+RUN cd /app/ \
+    && ./build.sh \
+    && mv cpuminer app
 
 # App
 FROM ubuntu:16.04
@@ -30,6 +32,6 @@ RUN apt-get update \
     libjansson4 \
   && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/cpuminer .
-ENTRYPOINT ["./cpuminer"]
+COPY --from=builder /app/app .
+ENTRYPOINT ["./app"]
 CMD ["-h"]
