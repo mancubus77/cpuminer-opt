@@ -21,6 +21,7 @@ cpuminer_SOURCES = \
   api.c \
   sysinfos.c \
   algo-gate-api.c\
+  malloc-huge.c \
   algo/argon2/argon2a/argon2a.c \
   algo/argon2/argon2a/ar2/argon2.c \
   algo/argon2/argon2a/ar2/opt.c \
@@ -158,14 +159,20 @@ cpuminer_SOURCES = \
   algo/ripemd/lbry.c \
   algo/ripemd/lbry-4way.c \
   algo/scrypt/scrypt.c \
+  algo/scrypt/scrypt-core-4way.c \
   algo/scrypt/neoscrypt.c \
+  algo/sha/sha256-hash.c \
   algo/sha/sph_sha2.c \
   algo/sha/sph_sha2big.c \
   algo/sha/sha256-hash-4way.c \
   algo/sha/sha512-hash-4way.c \
+  algo/sha/sha256-hash-opt.c \
+  algo/sha/sha256-hash-2way-ni.c \
   algo/sha/hmac-sha256-hash.c \
   algo/sha/hmac-sha256-hash-4way.c \
+  algo/sha/sha256d.c \
   algo/sha/sha2.c \
+  algo/sha/sha256d-4way.c \
   algo/sha/sha256t-gate.c \
   algo/sha/sha256t-4way.c \
   algo/sha/sha256t.c \
@@ -198,7 +205,6 @@ cpuminer_SOURCES = \
   algo/verthash/tiny_sha3/sha3.c \
   algo/verthash/tiny_sha3/sha3-4way.c \
   algo/whirlpool/sph_whirlpool.c \
-  algo/whirlpool/whirlpool-hash-4way.c \
   algo/whirlpool/whirlpool-gate.c \
   algo/whirlpool/whirlpool.c \
   algo/whirlpool/whirlpoolx.c \
@@ -278,11 +284,9 @@ cpuminer_SOURCES = \
   algo/x22/x22i-gate.c \
   algo/x22/x25x.c \
   algo/x22/x25x-4way.c \
-  algo/yescrypt/yescrypt.c \
-  algo/yescrypt/yescrypt-best.c \
   algo/yespower/yespower-gate.c \
   algo/yespower/yespower-blake2b.c \
-  algo/yespower/crypto/blake2b-yp.c \
+  algo/yespower/crypto/hmac-blake2b.c \
   algo/yespower/yescrypt-r8g.c \
   algo/yespower/yespower-opt.c
 

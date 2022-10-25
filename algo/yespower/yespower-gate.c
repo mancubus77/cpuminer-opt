@@ -27,14 +27,11 @@
  * coin.
  */
 #include "yespower.h"
-
 #include "algo-gate-api.h"
 
 yespower_params_t yespower_params;
 
-//SHA256_CTX sha256_prehash_ctx;
-__thread sph_sha256_context sha256_prehash_ctx;
-//__thread SHA256_CTX sha256_prehash_ctx;
+__thread sha256_context sha256_prehash_ctx;
 
 // YESPOWER
 
@@ -61,8 +58,8 @@ int scanhash_yespower( struct work *work, uint32_t max_nonce,
    endiandata[19] = n;
 
    // do sha256 prehash
-   sph_sha256_init( &sha256_prehash_ctx );
-   sph_sha256( &sha256_prehash_ctx, endiandata, 64 );
+   sha256_ctx_init( &sha256_prehash_ctx );
+   sha256_update( &sha256_prehash_ctx, endiandata, 64 );
 
    do {
       if ( yespower_hash( (char*)endiandata, (char*)vhash, 80, thr_id ) )
@@ -100,10 +97,6 @@ int scanhash_yespower_b2b( struct work *work, uint32_t max_nonce,
    for ( int k = 0; k < 19; k++ )
       be32enc( &endiandata[k], pdata[k] );
    endiandata[19] = n;
-
-   // do sha256 prehash
-   sph_sha256_init( &sha256_prehash_ctx );
-   sph_sha256( &sha256_prehash_ctx, endiandata, 64 );
 
    do {
       if (yespower_b2b_hash( (char*) endiandata, (char*) vhash, 80, thr_id ) )
@@ -168,7 +161,7 @@ bool register_yespowerr16_algo( algo_gate_t* gate )
 
 // Legacy Yescrypt (yespower v0.5)
 
-bool register_yescrypt_05_algo( algo_gate_t* gate )
+bool register_yescrypt_algo( algo_gate_t* gate )
 {
    gate->optimizations = SSE2_OPT | SHA_OPT;
    gate->scanhash   = (void*)&scanhash_yespower;
@@ -201,7 +194,7 @@ bool register_yescrypt_05_algo( algo_gate_t* gate )
 }
 
 
-bool register_yescryptr8_05_algo( algo_gate_t* gate )
+bool register_yescryptr8_algo( algo_gate_t* gate )
 {
    gate->optimizations = SSE2_OPT | SHA_OPT;
    gate->scanhash   = (void*)&scanhash_yespower;
@@ -214,7 +207,7 @@ bool register_yescryptr8_05_algo( algo_gate_t* gate )
    return true;
 }
 
-bool register_yescryptr16_05_algo( algo_gate_t* gate )
+bool register_yescryptr16_algo( algo_gate_t* gate )
 {
    gate->optimizations = SSE2_OPT | SHA_OPT;
    gate->scanhash   = (void*)&scanhash_yespower;
@@ -227,7 +220,7 @@ bool register_yescryptr16_05_algo( algo_gate_t* gate )
    return true;
 }
 
-bool register_yescryptr32_05_algo( algo_gate_t* gate )
+bool register_yescryptr32_algo( algo_gate_t* gate )
 {
    gate->optimizations = SSE2_OPT | SHA_OPT;
    gate->scanhash   = (void*)&scanhash_yespower;
@@ -256,7 +249,7 @@ bool register_power2b_algo( algo_gate_t* gate )
   applog( LOG_NOTICE,"Key= \"%s\"", yespower_params.pers );
   applog( LOG_NOTICE,"Key length= %d\n", yespower_params.perslen );
 
-  gate->optimizations = SSE2_OPT;
+  gate->optimizations = SSE2_OPT | AVX2_OPT;
   gate->scanhash      = (void*)&scanhash_yespower_b2b;
   gate->hash          = (void*)&yespower_b2b_hash;
   opt_target_factor = 65536.0;

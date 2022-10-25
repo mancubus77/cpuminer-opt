@@ -209,7 +209,7 @@ static inline void cpu_getname(char *outbuf, size_t maxsz)
 {
    memset(outbuf, 0, maxsz);
 #ifdef WIN32
-   char brand[0xC0] = { 0 };
+   char brand[256] = { 0 };
    int output[4] = { 0 }, ext;
    cpuid(0x80000000, output);
    ext = output[0];
@@ -218,7 +218,7 @@ static inline void cpu_getname(char *outbuf, size_t maxsz)
       for (int i = 2; i <= (ext & 0xF); i++)
       {
          cpuid(0x80000000+i, output);
-	 memcpy(&brand[(i-2) * 4*sizeof(int)], output, 4*sizeof(int));
+         memcpy(&brand[(i-2) * 4*sizeof(int)], output, 4*sizeof(int));
       }
       snprintf(outbuf, maxsz, "%s", brand);
    }
@@ -333,7 +333,7 @@ static inline void cpu_getmodelid(char *outbuf, size_t maxsz)
 // CPU_INFO ECX
 #define SSE3_Flag      1    
 #define SSSE3_Flag    (1<< 9)
-#define XOP_Flag      (1<<11)
+#define XOP_Flag      (1<<11)   // obsolete, only available on pre-Ryzen AMD
 #define FMA3_Flag     (1<<12)
 #define AES_Flag      (1<<25)
 #define SSE41_Flag    (1<<19)
@@ -499,6 +499,28 @@ static inline bool has_vaes()
     int cpu_info[4] = { 0 };
     cpuid( EXTENDED_FEATURES, cpu_info );
     return cpu_info[ ECX_Reg ] & VAES_Flag;
+#endif
+}
+
+static inline bool has_vbmi()
+{
+#ifdef __arm__
+    return false;
+#else
+    int cpu_info[4] = { 0 };
+    cpuid( EXTENDED_FEATURES, cpu_info );
+    return cpu_info[ ECX_Reg ] & AVX512VBMI_Flag;
+#endif
+}
+
+static inline bool has_vbmi2()
+{
+#ifdef __arm__
+    return false;
+#else
+    int cpu_info[4] = { 0 };
+    cpuid( EXTENDED_FEATURES, cpu_info );
+    return cpu_info[ ECX_Reg ] & AVX512VBMI2_Flag;
 #endif
 }
 

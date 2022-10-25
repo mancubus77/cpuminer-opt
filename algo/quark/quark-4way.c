@@ -68,7 +68,6 @@ void quark_8way_hash( void *state, const void *input )
     quark_8way_ctx_holder ctx;
     const uint32_t mask = 8;
     const __m512i bit3_mask = m512_const1_64( mask );
-    const __m512i zero = _mm512_setzero_si512();
 
     memcpy( &ctx, &quark_8way_ctx, sizeof(quark_8way_ctx) );
 
@@ -76,9 +75,7 @@ void quark_8way_hash( void *state, const void *input )
 
     bmw512_8way_full( &ctx.bmw, vhash, vhash, 64 );
     
-    vh_mask = _mm512_cmpeq_epi64_mask( _mm512_and_si512( vh[0], bit3_mask ),
-                                       zero );
-
+    vh_mask = _mm512_testn_epi64_mask( vh[0], bit3_mask );
     
 #if defined(__VAES__)
 
@@ -127,10 +124,8 @@ void quark_8way_hash( void *state, const void *input )
 
      rintrlv_8x64_4x128( vhashA, vhashB, vhash, 512 );
 
-     if ( ( vh_mask & 0x0f ) != 0x0f )
-       groestl512_4way_full( &ctx.groestl, vhashA, vhashA, 64 );
-     if ( ( vh_mask & 0xf0 ) != 0xf0 )
-       groestl512_4way_full( &ctx.groestl, vhashB, vhashB, 64 );
+     groestl512_4way_full( &ctx.groestl, vhashA, vhashA, 64 );
+     groestl512_4way_full( &ctx.groestl, vhashB, vhashB, 64 );
 
      rintrlv_4x128_8x64( vhash, vhashA, vhashB, 512 );
 
@@ -139,22 +134,14 @@ void quark_8way_hash( void *state, const void *input )
     dintrlv_8x64( hash0, hash1, hash2, hash3, hash4, hash5, hash6, hash7,
                   vhash, 512 );
 
-    if ( hash0[0] & 8 )
-       groestl512_full( &ctx.groestl, (char*)hash0, (char*)hash0, 512 );
-    if ( hash1[0] & 8 )
-       groestl512_full( &ctx.groestl, (char*)hash1, (char*)hash1, 512 );
-    if ( hash2[0] & 8)
-       groestl512_full( &ctx.groestl, (char*)hash2, (char*)hash2, 512 );
-    if ( hash3[0] & 8 )
-       groestl512_full( &ctx.groestl, (char*)hash3, (char*)hash3, 512 );
-    if ( hash4[0] & 8 )
-       groestl512_full( &ctx.groestl, (char*)hash4, (char*)hash4, 512 );
-    if ( hash5[0] & 8 )
-       groestl512_full( &ctx.groestl, (char*)hash5, (char*)hash5, 512 );
-    if ( hash6[0] & 8 )
-       groestl512_full( &ctx.groestl, (char*)hash6, (char*)hash6, 512 );
-    if ( hash7[0] & 8 )
-       groestl512_full( &ctx.groestl, (char*)hash7, (char*)hash7, 512 );
+    groestl512_full( &ctx.groestl, (char*)hash0, (char*)hash0, 512 );
+    groestl512_full( &ctx.groestl, (char*)hash1, (char*)hash1, 512 );
+    groestl512_full( &ctx.groestl, (char*)hash2, (char*)hash2, 512 );
+    groestl512_full( &ctx.groestl, (char*)hash3, (char*)hash3, 512 );
+    groestl512_full( &ctx.groestl, (char*)hash4, (char*)hash4, 512 );
+    groestl512_full( &ctx.groestl, (char*)hash5, (char*)hash5, 512 );
+    groestl512_full( &ctx.groestl, (char*)hash6, (char*)hash6, 512 );
+    groestl512_full( &ctx.groestl, (char*)hash7, (char*)hash7, 512 );
 
     intrlv_8x64( vhash, hash0, hash1, hash2, hash3, hash4, hash5, hash6, hash7,
                  512 );
@@ -164,8 +151,7 @@ void quark_8way_hash( void *state, const void *input )
     jh512_8way_update( &ctx.jh, vhash, 64 );
     jh512_8way_close( &ctx.jh, vhash );
 
-    vh_mask = _mm512_cmpeq_epi64_mask( _mm512_and_si512( vh[0], bit3_mask ),
-                                       zero );
+    vh_mask = _mm512_testn_epi64_mask( vh[0], bit3_mask );
 
     if ( ( vh_mask & 0xff ) != 0xff )
        blake512_8way_full( &ctx.blake, vhashA, vhash, 64 );
@@ -179,8 +165,7 @@ void quark_8way_hash( void *state, const void *input )
 
     skein512_8way_full( &ctx.skein, vhash, vhash, 64 );
 
-    vh_mask = _mm512_cmpeq_epi64_mask( _mm512_and_si512( vh[0], bit3_mask ),
-                                       zero );
+    vh_mask = _mm512_testn_epi64_mask( vh[0], bit3_mask );
 
     if ( ( vh_mask & 0xff ) != 0xff )
     {

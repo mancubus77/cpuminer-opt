@@ -37,7 +37,8 @@ union _x17_8way_context_overlay
     jh512_8way_context      jh;
     keccak512_8way_context  keccak;
     luffa_4way_context      luffa;
-    cube_4way_context       cube;
+//    cube_4way_context       cube;
+    cube_4way_2buf_context   cube;
 #if defined(__VAES__)
     groestl512_4way_context groestl;
     shavite512_4way_context shavite;
@@ -57,23 +58,27 @@ union _x17_8way_context_overlay
 } __attribute__ ((aligned (64)));
 typedef union _x17_8way_context_overlay x17_8way_context_overlay;
 
+static __thread __m512i x17_8way_midstate[16] __attribute__((aligned(64)));
+static __thread blake512_8way_context blake512_8way_ctx __attribute__((aligned(64)));
+
 int x17_8way_hash( void *state, const void *input, int thr_id )
 {
      uint64_t vhash[8*8] __attribute__ ((aligned (128)));
      uint64_t vhashA[8*8] __attribute__ ((aligned (64)));
      uint64_t vhashB[8*8] __attribute__ ((aligned (64)));
-     uint64_t hash0[8] __attribute__ ((aligned (64)));
-     uint64_t hash1[8] __attribute__ ((aligned (64)));
-     uint64_t hash2[8] __attribute__ ((aligned (64)));
-     uint64_t hash3[8] __attribute__ ((aligned (64)));
-     uint64_t hash4[8] __attribute__ ((aligned (64)));
-     uint64_t hash5[8] __attribute__ ((aligned (64)));
-     uint64_t hash6[8] __attribute__ ((aligned (64)));
-     uint64_t hash7[8] __attribute__ ((aligned (64)));
+     uint64_t hash0[8] __attribute__ ((aligned (32)));
+     uint64_t hash1[8] __attribute__ ((aligned (32)));
+     uint64_t hash2[8] __attribute__ ((aligned (32)));
+     uint64_t hash3[8] __attribute__ ((aligned (32)));
+     uint64_t hash4[8] __attribute__ ((aligned (32)));
+     uint64_t hash5[8] __attribute__ ((aligned (32)));
+     uint64_t hash6[8] __attribute__ ((aligned (32)));
+     uint64_t hash7[8] __attribute__ ((aligned (32)));
      x17_8way_context_overlay ctx;
 
-     blake512_8way_full( &ctx.blake, vhash, input, 80 );
-
+     blake512_8way_final_le( &blake512_8way_ctx, vhash, casti_m512i( input, 9 ),
+                             x17_8way_midstate );
+     
      bmw512_8way_full( &ctx.bmw, vhash, vhash, 64 );
 
 #if defined(__VAES__)
@@ -119,9 +124,8 @@ int x17_8way_hash( void *state, const void *input, int thr_id )
      luffa512_4way_full( &ctx.luffa, vhashA, vhashA, 64 );
      luffa512_4way_full( &ctx.luffa, vhashB, vhashB, 64 );
 
-     cube_4way_full( &ctx.cube, vhashA, 512, vhashA, 64 );
-     cube_4way_full( &ctx.cube, vhashB, 512, vhashB, 64 );
-
+     cube_4way_2buf_full( &ctx.cube, vhashA, vhashB, 512, vhashA, vhashB, 64 );
+     
 #if defined(__VAES__)
 
      shavite512_4way_full( &ctx.shavite, vhashA, vhashA, 64 );
@@ -234,6 +238,57 @@ int x17_8way_hash( void *state, const void *input, int thr_id )
      return 1;
 }
 
+int scanhash_x17_8way( struct work *work, uint32_t max_nonce,
+                      uint64_t *hashes_done, struct thr_info *mythr )
+{
+   uint32_t hash32[8*8] __attribute__ ((aligned (128)));
+   uint32_t vdata[20*8] __attribute__ ((aligned (64)));
+   uint32_t lane_hash[8] __attribute__ ((aligned (64)));
+   __m128i edata[5] __attribute__ ((aligned (64)));
+   uint32_t *hash32_d7 = &(hash32[7*8]);
+   uint32_t *pdata = work->data;
+   const uint32_t *ptarget = work->target;
+   const uint32_t first_nonce = pdata[19];
+   const uint32_t last_nonce = max_nonce - 8;
+   __m512i  *noncev = (__m512i*)vdata + 9;
+   uint32_t n = first_nonce;
+   const int thr_id = mythr->id;
+   const uint32_t targ32_d7 = ptarget[7];
+   const __m512i eight = m512_const1_64( 8 );
+   const bool bench = opt_benchmark;
+
+   edata[0] = mm128_swap64_32( casti_m128i( pdata, 0 ) );
+   edata[1] = mm128_swap64_32( casti_m128i( pdata, 1 ) );
+   edata[2] = mm128_swap64_32( casti_m128i( pdata, 2 ) );
+   edata[3] = mm128_swap64_32( casti_m128i( pdata, 3 ) );
+   edata[4] = mm128_swap64_32( casti_m128i( pdata, 4 ) );
+
+   mm512_intrlv80_8x64( vdata, edata );
+   *noncev = _mm512_add_epi32( *noncev, _mm512_set_epi32(
+                                    0,7, 0,6, 0,5, 0,4, 0,3, 0,2, 0,1, 0,0 ) );
+   blake512_8way_prehash_le( &blake512_8way_ctx, x17_8way_midstate, vdata );
+   
+   do
+   {
+      if ( likely( x17_8way_hash( hash32, vdata, thr_id ) ) )
+      for ( int lane = 0; lane < 8; lane++ )
+      if ( unlikely( ( hash32_d7[ lane ] <= targ32_d7 ) && !bench ) )
+      {
+         extr_lane_8x32( lane_hash, hash32, lane, 256 );
+         if ( likely( valid_hash( lane_hash, ptarget ) ) )
+         {
+            pdata[19] = n + lane;
+            submit_solution( work, lane_hash, mythr );
+         }
+      }
+      *noncev = _mm512_add_epi32( *noncev, eight );
+      n += 8;
+   } while ( likely( ( n < last_nonce ) && !work_restart[thr_id].restart ) );
+   pdata[19] = n;
+   *hashes_done = n - first_nonce;
+   return 0;
+}
+
 #elif defined(X17_4WAY)
 
 union _x17_4way_context_overlay
@@ -263,18 +318,24 @@ union _x17_4way_context_overlay
 };  
 typedef union _x17_4way_context_overlay x17_4way_context_overlay;
 
+static __thread __m256i x17_4way_midstate[16] __attribute__((aligned(64)));
+static __thread blake512_4way_context blake512_4way_ctx __attribute__((aligned(64)));
+
 int x17_4way_hash( void *state, const void *input, int thr_id )
 {
      uint64_t vhash[8*4] __attribute__ ((aligned (64)));
      uint64_t vhashA[8*4] __attribute__ ((aligned (64)));
      uint64_t vhashB[8*4] __attribute__ ((aligned (64)));
-     uint64_t hash0[8] __attribute__ ((aligned (64)));
-     uint64_t hash1[8] __attribute__ ((aligned (64)));
-     uint64_t hash2[8] __attribute__ ((aligned (64)));
-     uint64_t hash3[8] __attribute__ ((aligned (64)));
+     uint64_t hash0[8] __attribute__ ((aligned (32)));
+     uint64_t hash1[8] __attribute__ ((aligned (32)));
+     uint64_t hash2[8] __attribute__ ((aligned (32)));
+     uint64_t hash3[8] __attribute__ ((aligned (32)));
      x17_4way_context_overlay ctx;
 
-     blake512_4way_full( &ctx.blake, vhash, input, 80 );
+     blake512_4way_final_le( &blake512_4way_ctx, vhash, casti_m256i( input, 9 ),
+                             x17_4way_midstate );
+     
+//     blake512_4way_full( &ctx.blake, vhash, input, 80 );
 
      bmw512_4way_init( &ctx.bmw );
      bmw512_4way_update( &ctx.bmw, vhash, 64 );
@@ -388,6 +449,56 @@ int x17_4way_hash( void *state, const void *input, int thr_id )
      haval256_5_4way_close( &ctx.haval, state );
 
      return 1;
+}
+
+int scanhash_x17_4way( struct work *work, uint32_t max_nonce,
+                   uint64_t *hashes_done, struct thr_info *mythr )
+{
+   uint32_t hash32[8*4] __attribute__ ((aligned (128)));
+   uint32_t vdata[20*4] __attribute__ ((aligned (32)));
+   uint32_t lane_hash[8] __attribute__ ((aligned (32)));
+   __m128i edata[5] __attribute__ ((aligned (32)));
+   uint32_t *pdata = work->data;
+   uint32_t *hash32_d7 = &(hash32[7*4]);
+   const uint32_t *ptarget = work->target;
+   const uint32_t first_nonce = pdata[19];
+   const uint32_t last_nonce = max_nonce - 4;
+   __m256i  *noncev = (__m256i*)vdata + 9;
+   uint32_t n = first_nonce;
+   const int thr_id = mythr->id;
+   const uint32_t targ32_d7 = ptarget[7];
+   const __m256i four = m256_const1_64( 4 );
+   const bool bench = opt_benchmark;
+
+   edata[0] = mm128_swap64_32( casti_m128i( pdata, 0 ) );
+   edata[1] = mm128_swap64_32( casti_m128i( pdata, 1 ) );
+   edata[2] = mm128_swap64_32( casti_m128i( pdata, 2 ) );
+   edata[3] = mm128_swap64_32( casti_m128i( pdata, 3 ) );
+   edata[4] = mm128_swap64_32( casti_m128i( pdata, 4 ) );
+
+   mm256_intrlv80_4x64( vdata, edata );
+   *noncev = _mm256_add_epi32( *noncev, _mm256_set_epi32( 0,3,0,2, 0,1,0,0 ) );
+   blake512_4way_prehash_le( &blake512_4way_ctx, x17_4way_midstate, vdata );
+
+   do
+   {
+      if ( likely( x17_4way_hash( hash32, vdata, thr_id ) ) )
+      for ( int lane = 0; lane < 4; lane++ )
+      if ( unlikely( ( hash32_d7[ lane ] <= targ32_d7 ) && !bench ) )
+      {
+         extr_lane_4x32( lane_hash, hash32, lane, 256 );
+         if ( likely( valid_hash( lane_hash, ptarget ) ) )
+         {
+            pdata[19] = n + lane;
+            submit_solution( work, lane_hash, mythr );
+         }
+      }
+      *noncev = _mm256_add_epi32( *noncev, four );
+      n += 4;
+   } while ( ( n < last_nonce ) && !work_restart[thr_id].restart );
+   pdata[19] = n;
+   *hashes_done = n - first_nonce;
+   return 0;
 }
 
 #endif

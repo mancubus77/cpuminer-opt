@@ -70,17 +70,25 @@ void *alloca (size_t);
 
 #ifdef HAVE_SYSLOG_H
 #include <syslog.h>
-#define LOG_BLUE 0x10 /* unique value */
+#define LOG_BLUE  0x10 /* unique value */
+#define LOG_MAJR  0x11 /* unique value */
+#define LOG_MINR  0x12 /* unique value */
+#define LOG_GREEN 0x13 /* unique value */
+#define LOG_PINK  0x14 /* unique value */
 #else
 enum {
-	LOG_ERR,
+   LOG_CRIT,
+   LOG_ERR,
 	LOG_WARNING,
 	LOG_NOTICE,
 	LOG_INFO,
 	LOG_DEBUG,
-	/* custom notices */
-	LOG_BLUE = 0x10,
-};
+   /* custom notices */
+	LOG_BLUE  = 0x10,
+   LOG_MAJR  = 0x11,
+   LOG_MINR  = 0x12,
+   LOG_GREEN = 0x13,
+   LOG_PINK  = 0x14 };
 #endif
 
 extern bool is_power_of_2( int n );
@@ -216,7 +224,7 @@ json_t* json_load_url(char* cfg_url, json_error_t *err);
 
 void sha256_init(uint32_t *state);
 void sha256_transform(uint32_t *state, const uint32_t *block, int swap);
-void sha256d(unsigned char *hash, const unsigned char *data, int len);
+//void sha256d(unsigned char *hash, const unsigned char *data, int len);
 
 #ifdef USE_ASM
 #if defined(__ARM_NEON__) || defined(__i386__) || defined(__x86_64__)
@@ -225,7 +233,8 @@ int sha256_use_4way();
 void sha256_init_4way(uint32_t *state);
 void sha256_transform_4way(uint32_t *state, const uint32_t *block, int swap);
 #endif
-#if defined(__x86_64__) && defined(USE_AVX2)
+//#if defined(__x86_64__) && defined(USE_AVX2)
+#if defined(__x86_64__) && defined(__AVX2__)
 #define HAVE_SHA256_8WAY 1
 int sha256_use_8way();
 void sha256_init_8way(uint32_t *state);
@@ -271,9 +280,9 @@ struct thr_api {
 #define CL_N    "\x1B[0m"
 #define CL_RED  "\x1B[31m"
 #define CL_GRN  "\x1B[32m"
-#define CL_YLW  "\x1B[33m"
+#define CL_YLW  "\x1B[33m"  // dark yellow
 #define CL_BLU  "\x1B[34m"
-#define CL_MAG  "\x1B[35m"
+#define CL_MAG  "\x1B[35m"  // purple
 #define CL_CYN  "\x1B[36m"
 
 #define CL_BLK  "\x1B[22;30m" /* black */
@@ -281,7 +290,7 @@ struct thr_api {
 #define CL_GR2  "\x1B[22;32m" /* green */
 #define CL_BRW  "\x1B[22;33m" /* brown */
 #define CL_BL2  "\x1B[22;34m" /* blue */
-#define CL_MA2  "\x1B[22;35m" /* magenta */
+#define CL_MA2  "\x1B[22;35m" /* purple */
 #define CL_CY2  "\x1B[22;36m" /* cyan */
 #define CL_SIL  "\x1B[22;37m" /* gray */
 
@@ -290,9 +299,9 @@ struct thr_api {
 #else
 #define CL_GRY  "\x1B[90m"    /* dark gray selectable in putty */
 #endif
-#define CL_LRD  "\x1B[01;31m" /* light red */
-#define CL_LGR  "\x1B[01;32m" /* light green */
-#define CL_YL2  "\x1B[01;33m" /* yellow */
+#define CL_LRD  "\x1B[01;31m" /* bright red */
+#define CL_LGR  "\x1B[01;32m" /* bright green */
+#define CL_YL2  "\x1B[01;33m" /* bright yellow */
 #define CL_LBL  "\x1B[01;34m" /* light blue */
 #define CL_LMA  "\x1B[01;35m" /* light magenta */
 #define CL_LCY  "\x1B[01;36m" /* light cyan */
@@ -307,6 +316,7 @@ extern json_t *json_rpc_call( CURL *curl, const char *url, const char *userpass,
 extern void cbin2hex(char *out, const char *in, size_t len);
 void   bin2hex( char *s, const unsigned char *p, size_t len );
 char  *abin2hex( const unsigned char *p, size_t len );
+char  *bebin2hex( const unsigned char *p, size_t len );
 bool   hex2bin( unsigned char *p, const char *hexstr, size_t len );
 bool   jobj_binary( const json_t *obj, const char *key, void *buf,
                     size_t buflen );
@@ -456,6 +466,7 @@ void stratum_disconnect(struct stratum_ctx *sctx);
 bool stratum_subscribe(struct stratum_ctx *sctx);
 bool stratum_authorize(struct stratum_ctx *sctx, const char *user, const char *pass);
 bool stratum_handle_method(struct stratum_ctx *sctx, const char *s);
+bool stratum_suggest_difficulty( struct stratum_ctx *sctx, double diff );
 
 
 extern bool aes_ni_supported;
@@ -480,7 +491,7 @@ void format_hashrate(double hashrate, char *output);
 void print_hash_tests(void);
 
 void scale_hash_for_display ( double* hashrate, char* units );
-
+void format_number_si( double* hashrate, char* si_units );
 void report_summary_log( bool force );
 
 /*
@@ -801,7 +812,7 @@ Options:\n\
                           lyra2z330     Lyra2 330 rows\n\
                           m7m           Magi (XMG)\n\
                           myr-gr        Myriad-Groestl\n\
-                          minotaur      Ringcoin (RNG)\n\
+                          minotaur\n\
                           neoscrypt     NeoScrypt(128, 2, 1)\n\
                           nist5         Nist5\n\
                           pentablake    5 x blake512\n\
@@ -813,6 +824,7 @@ Options:\n\
                           qubit         Qubit\n\
                           scrypt        scrypt(1024, 1, 1) (default)\n\
                           scrypt:N      scrypt(N, 1, 1)\n\
+                          scryptn2      scrypt(1048576, 1,1)\n\
                           sha256d       Double SHA-256\n\
                           sha256q       Quad SHA-256, Pyrite (PYE)\n\
                           sha256t       Triple SHA-256, Onecoin (OC)\n\
@@ -858,9 +870,9 @@ Options:\n\
                           yespowerr16   Yenten (YTN)\n\
                           yespower-b2b  generic yespower + blake2b\n\
                           zr5           Ziftr\n\
-  -N, --param-n         N parameter for scrypt based algos\n\
-  -R, --param-r         R parameter for scrypt based algos\n\
-  -K, --param-key       Key (pers) parameter for algos that use it\n\
+  -N, --param-n=N       N parameter for scrypt based algos\n\
+  -R, --param-r=N       R parameter for scrypt based algos\n\
+  -K, --param-key=STRING  Key (pers) parameter for algos that use it\n\
   -o, --url=URL         URL of mining server\n\
   -O, --userpass=U:P    username:password pair for mining server\n\
   -u, --user=USERNAME   username for mining server\n\
@@ -875,19 +887,19 @@ Options:\n\
   -T, --timeout=N       timeout for long poll and stratum (default: 300 seconds)\n\
   -s, --scantime=N      upper bound on time spent scanning current work when\n\
                           long polling is unavailable, in seconds (default: 5)\n\
-      --randomize       Randomize scan range start to reduce duplicates\n\
-  -f, --diff-factor     Divide req. difficulty by this factor (std is 1.0)\n\
-  -m, --diff-multiplier Multiply difficulty by this factor (std is 1.0)\n\
-      --hash-meter      Display thread hash rates\n\
+      --randomize       randomize scan range (deprecated)\n\
+  -f, --diff-factor=N   divide req. difficulty by this factor (std is 1.0)\n\
+  -m, --diff-multiplier=N Multiply difficulty by this factor (std is 1.0)\n\
+      --hash-meter      display thread hash rates\n\
       --coinbase-addr=ADDR  payout address for solo mining\n\
       --coinbase-sig=TEXT  data to insert in the coinbase when possible\n\
       --no-longpoll     disable long polling support\n\
       --no-getwork      disable getwork support\n\
       --no-gbt          disable getblocktemplate support\n\
       --no-stratum      disable X-Stratum support\n\
-      --no-extranonce   disable Stratum extranonce support\n\
+      --no-extranonce   disable Stratum extranonce subscribe\n\
       --no-redirect     ignore requests to change the URL of the mining server\n\
-  -q, --quiet           disable per-thread hashmeter output\n\
+  -q, --quiet           reduce log verbosity\n\
       --no-color        disable colored output\n\
   -D, --debug           enable debug output\n\
   -P, --protocol-dump   verbose dump of protocol-level activities\n"
@@ -899,16 +911,17 @@ Options:\n\
   -B, --background      run the miner in the background\n\
       --benchmark       run in offline benchmark mode\n\
       --cpu-affinity    set process affinity to cpu core(s), mask 0x3 for cores 0 and 1\n\
-      --cpu-priority    set process priority (default: 0 idle, 2 normal to 5 highest)\n\
+      --cpu-priority    set process priority (default: 0 idle, 2 normal to 5 highest) (deprecated)\n\
   -b, --api-bind=address[:port]   IP address for the miner API, default port is 4048)\n\
-      --api-remote      Allow remote control\n\
-      --max-temp=N      Only mine if cpu temp is less than specified value (linux)\n\
-      --max-rate=N[KMG] Only mine if net hashrate is less than specified value\n\
-      --max-diff=N      Only mine if net difficulty is less than specified value\n\
+      --api-remote      allow remote control\n\
+      --max-temp=N      only mine if cpu temp is less than specified value (linux)\n\
+      --max-rate=N[KMG] only mine if net hashrate is less than specified value\n\
+      --max-diff=N      only mine if net difficulty is less than specified value\n\
   -c, --config=FILE     load a JSON-format configuration file\n\
-      --data-file       path and name of data file\n\
+      --data-file=FILE  path and name of data file\n\
       --verify          enable additional time consuming start up tests\n\
-  -V, --version         display version information and exit\n\
+      --stratum-keepalive  prevent disconnects when difficulty is too high\n\
+  -V, --version         display version and CPU information and exit\n\
   -h, --help            display this help text and exit\n\
 ";
 
@@ -977,6 +990,7 @@ static struct option const options[] = {
         { "userpass", 1, NULL, 'O' },
         { "data-file", 1, NULL, 1027 },
         { "verify", 0, NULL, 1028 },
+        { "stratum-keepalive", 0, NULL, 1029 },
         { "version", 0, NULL, 'V' },
         { 0, 0, 0, 0 }
 };

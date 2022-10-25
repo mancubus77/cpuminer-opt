@@ -47,6 +47,7 @@
 //#include "miner.h"
 #include "elist.h"
 #include "algo-gate-api.h"
+#include "algo/sha/sha256d.h"
 
 //extern pthread_mutex_t stats_lock;
 
@@ -129,17 +130,19 @@ void applog2( int prio, const char *fmt, ... )
 
 //    localtime_r(&now, &tm);
 
-      switch (prio) {
+      switch ( prio )
+      {
+         case LOG_CRIT:    color = CL_LRD; break;
          case LOG_ERR:     color = CL_RED; break;
-         case LOG_WARNING: color = CL_YLW; break;
+         case LOG_WARNING: color = CL_YL2; break;
+         case LOG_MAJR:    color = CL_YL2; break;
          case LOG_NOTICE:  color = CL_WHT; break;
          case LOG_INFO:    color = ""; break;
          case LOG_DEBUG:   color = CL_GRY; break;
-
-         case LOG_BLUE:
-            prio = LOG_NOTICE;
-            color = CL_CYN;
-            break;
+         case LOG_MINR:    color = CL_YLW; break;
+         case LOG_GREEN:   color = CL_GRN; prio = LOG_INFO; break;
+         case LOG_BLUE:    color = CL_CYN; prio = LOG_NOTICE; break;
+         case LOG_PINK:    color = CL_LMA; prio = LOG_NOTICE; break;
       }
       if (!use_colors)
          color = "";
@@ -206,17 +209,19 @@ void applog(int prio, const char *fmt, ...)
 
 		localtime_r(&now, &tm);
 
-		switch (prio) {
-			case LOG_ERR:     color = CL_RED; break;
-			case LOG_WARNING: color = CL_YLW; break;
+		switch ( prio )
+      {
+         case LOG_CRIT:    color = CL_LRD; break;
+         case LOG_ERR:     color = CL_RED; break;
+			case LOG_WARNING: color = CL_YL2; break;
+         case LOG_MAJR:    color = CL_YL2; break;
 			case LOG_NOTICE:  color = CL_WHT; break;
-			case LOG_INFO:    color = ""; break;
+			case LOG_INFO:    color = "";     break;
 			case LOG_DEBUG:   color = CL_GRY; break;
-
-			case LOG_BLUE:
-				prio = LOG_NOTICE;
-				color = CL_CYN;
-				break;
+         case LOG_MINR:    color = CL_YLW; break;
+         case LOG_GREEN:   color = CL_GRN; prio = LOG_INFO;  break;
+			case LOG_BLUE:    color = CL_CYN; prio = LOG_NOTICE; break;
+         case LOG_PINK:    color = CL_LMA; prio = LOG_NOTICE; break;
 		}
 		if (!use_colors)
 			color = "";
@@ -302,6 +307,29 @@ void format_hashrate(double hashrate, char *output)
 		hashrate, prefix
 	);
 }
+
+// For use with MiB etc
+void format_number_si( double* n, char* si_units )
+{
+  if ( *n < 1024*10 )  {  *si_units = 0;   return;  }
+  *n /= 1024;
+  if ( *n < 1024*10 )  {  *si_units = 'k'; return;  }
+  *n /= 1024;
+  if ( *n < 1024*10 )  {  *si_units = 'M'; return;  }
+  *n /= 1024;
+  if ( *n < 1024*10 )  {  *si_units = 'G'; return;  }
+  *n /= 1024;
+  if ( *n < 1024*10 )  {  *si_units = 'T'; return;  }
+  *n /= 1024;
+  if ( *n < 1024*10 )  {  *si_units = 'P'; return;  }
+  *n /= 1024;
+  if ( *n < 1024*10 )  {  *si_units = 'E'; return;  }
+  *n /= 1024;
+  if ( *n < 1024*10 )  {  *si_units = 'Z'; return;  }
+  *n /= 1024;
+  *si_units = 'Y';
+}
+
 
 /* Modify the representation of integer numbers which would cause an overflow
  * so that they are treated as floating-point numbers.
@@ -793,6 +821,15 @@ char *abin2hex(const unsigned char *p, size_t len)
 		return NULL;
 	bin2hex(s, p, len);
 	return s;
+}
+
+char *bebin2hex(const unsigned char *p, size_t len)
+{
+   char *s = (char*) malloc((len * 2) + 1);
+   if (!s)  return NULL;
+   for ( size_t i = 0, j = len - 1; i < len; i++, j-- )
+      sprintf( s + ( i*2 ), "%02x", (unsigned int) p[ j ] );
+   return s;
 }
 
 bool hex2bin(unsigned char *p, const char *hexstr, size_t len)
@@ -1334,7 +1371,7 @@ static bool send_line( struct stratum_ctx *sctx, char *s )
      {
         if ( rc != CURLE_AGAIN )
 #else                      
-     n = send(sock, s + sent, len, 0);
+     n = send( sctx->sock, s + sent, len, 0);
      if ( n < 0 )
      {
      if ( !socket_blocks() )
@@ -1342,8 +1379,8 @@ static bool send_line( struct stratum_ctx *sctx, char *s )
         return false;
 	     n = 0;
 	  }
-		sent += n;
-		len -= n;
+     sent += n;
+     len -= n;
    }
 
 	return true;
@@ -1505,11 +1542,20 @@ bool stratum_connect(struct stratum_ctx *sctx, const char *url)
 		free(sctx->url);
 		sctx->url = strdup(url);
 	}
-	free(sctx->curl_url);
+
+   free(sctx->curl_url);
 	sctx->curl_url = (char*) malloc(strlen(url));
-	sprintf( sctx->curl_url, "http%s", strstr( url, "s://" ) 
-                              ? strstr( url, "s://" )
-                              : strstr (url, "://"  ) );
+
+   // replace the stratum protocol prefix with http, https for ssl
+   sprintf( sctx->curl_url, "%s%s",
+            ( strstr( url, "s://" ) || strstr( url, "ssl://" ) )
+               ? "https" : "http", strstr( url, "://" ) );
+
+
+
+//   sprintf( sctx->curl_url, "http%s", strstr( url, "s://" ) 
+//                              ? strstr( url, "s://" )
+//                              : strstr (url, "://"  ) );
 
 	if (opt_protocol)
 		curl_easy_setopt(curl, CURLOPT_VERBOSE, 1);
@@ -1621,7 +1667,7 @@ static bool stratum_parse_extranonce(struct stratum_ctx *sctx, json_t *params, i
 	pthread_mutex_unlock(&sctx->work_lock);
 
    if ( !opt_quiet ) /* pool dynamic change */
-      applog( LOG_INFO, "Stratum extranonce1= %s, extranonce2 size= %d",
+      applog( LOG_INFO, "Stratum extranonce1 0x%s, extranonce2 size %d",
          xnonce1, xn2_size);
 
 	return true;
@@ -1789,10 +1835,14 @@ bool stratum_authorize(struct stratum_ctx *sctx, const char *user, const char *p
 				if ( !stratum_handle_method( sctx, sret ) )
 					applog( LOG_WARNING, "Stratum answer id is not correct!" );
 			}
-			res_val = json_object_get( extra, "result" );
-			if (opt_debug && (!res_val || json_is_false(res_val)))
-				applog(LOG_DEBUG, "Method extranonce.subscribe is not supported");
-			json_decref( extra );
+         else
+         {
+            res_val = json_object_get( extra, "result" );
+			   if ( opt_debug && ( !res_val || json_is_false( res_val ) ) )
+				   applog( LOG_DEBUG,
+                       "Method extranonce.subscribe is not supported" );
+         }
+         json_decref( extra );
 		}
 		free(sret);
 	}
@@ -1804,6 +1854,25 @@ out:
 
 	return ret;
 }
+
+bool stratum_suggest_difficulty( struct stratum_ctx *sctx, double diff )
+{
+   char *s;
+   s = (char*) malloc( 80 );
+   bool rc = true;
+
+   // response is handled seperately, what ID?
+   sprintf( s, "{\"id\": 1, \"method\": \"mining.suggest_difficulty\", \"params\": [\"%f\"]}", diff );
+   if ( !stratum_send_line( sctx, s ) )
+   {
+      applog(LOG_WARNING,"stratum.suggest_difficulty send failed");
+      rc = false;
+   } 
+   free ( s );
+   return rc;
+}
+
+
 
 /**
  * Extract bloc height     L H... here len=3, height=0x1333e8

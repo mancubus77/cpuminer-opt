@@ -1,3 +1,6 @@
+#ifndef __ALGO_GATE_API_H__
+#define __ALGO_GATE_API_H__ 1
+
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -94,7 +97,6 @@ typedef  uint32_t set_t;
 #define SHA_OPT       0x20   // Zen1, Icelake (sha256)
 #define AVX512_OPT    0x40   // Skylake-X (AVX512[F,VL,DQ,BW])
 #define VAES_OPT      0x80   // Icelake (VAES & AVX512)
-#define VAES256_OPT   0x100  // Zen3 (VAES without AVX512)
 
 
 // return set containing all elements from sets a & b
@@ -319,3 +321,4 @@ void exec_hash_function( int algo, void *output, const void *pdata );
 // algo name if valid alias, NULL if invalid alias or algo.
 void get_algo_alias( char **algo_or_alias );
 
+#endif
